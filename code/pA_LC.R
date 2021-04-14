@@ -10,7 +10,7 @@ library(viridis)
 library(readr)
 
 #load data
-(pA_df <- readRDS("data/pA.rds"))
+(pA_df <- readRDS("../data/pA.rds"))
 
 distinct(pA_df, temp, rapa, plasmid, pab1DRRM4)
 head(pA_df)
@@ -462,7 +462,7 @@ hs_df %>%
 
 #Analysis of 4tU RNA pA tail lengths
 #load data
-(tu_df <- readRDS("data/4tU_pA.rds"))
+(tu_df <- readRDS("../data/4tU_pA.rds"))
 
 head(tu_df)
 distinct(tu_df, plasmid, id, rapa, rep)
@@ -622,14 +622,14 @@ plot_violin_for_gene_tu(plot_violin_tu, gene = 'YJR048W_CYC1')
 # the nanopolish pA length output contains readname but no details on the alignments
 # therefore we got detailed alignment info for reads aligned to CYC1 from raw bam files
 # samtools view ${bam} chrX:526272-526848 | awk '{print $1"\t"$4"\t"length($10)}' | sort -k2,2n > ${bam/.bam/_CYC1_start_end.coord}
-# these were then copied to data/*_genome_mapping_CYC1_start_end.coord files
+# these were then copied to ../data/*_genome_mapping_CYC1_start_end.coord files
 
 ##load CYC1 read info
 ##reads selected to overlap CYC1 gene, ie region chrX:526272-526848 got readname, start of alignment and read length from bam file
 ##Manfred: can you please check this, so that the first line of code can be run:
 
 bam_dir <-
-  'data/CYC1_alignments/'
+  '../data/CYC1_alignments/'
 fnames <- dir(bam_dir, '_CYC1_start_end.coord')
 (
   cyc1_reads <- lapply(fnames, function(fname)
@@ -645,7 +645,7 @@ fnames <- dir(bam_dir, '_CYC1_start_end.coord')
     bind_rows
 )
 
-saveRDS(cyc1_reads, file = 'data/CYC1_classes.rds')
+saveRDS(cyc1_reads, file = '../data/CYC1_classes.rds')
 
 ggplot(cyc1_reads, aes(x = start)) +
   stat_ecdf() +
