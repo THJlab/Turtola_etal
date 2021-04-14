@@ -1,4 +1,4 @@
-**Analysis of poly(A) tail lengths for Turtola_etal**
+**Analysis of poly(A) tail lengths for Turtola et al.**
 
 The code describes the analysis and visualisation of poly(A) tail lengths presented in Figures 1, S1, 2 and S2.
 
