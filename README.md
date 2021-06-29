@@ -1,6 +1,6 @@
 **Analysis of poly(A) tail lengths for Turtola et al.**
 
-The code describes the analysis and visualisation of poly(A) tail lengths presented in Figures 1, S1, 2 and S2.
+File Turtola_etal.Rmd describes the analysis and visualisation of poly(A) tail lengths presented in Figures 1, S1, 2 and S2.
 
 Source data files (pA.rds; 4tU_pA.rds; CYC1_classes.rds; CYC1_alignment files) are in subfolder data. 
 Note that the large pA.rds and 4tU_pA.rds data files are uploaded to GitHub via git-lfs (see https://git-lfs.github.com/).
