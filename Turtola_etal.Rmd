@@ -1,0 +1,1693 @@
+---
+title: 'Turtola et al plots'
+author: "Manfred Schmid"
+output: 
+  pdf_document:
+    toc: true 
+    toc_depth: 3
+    fig_caption: true
+---
+
+`r format(Sys.time(), "%d %B, %Y; %R")`
+
+## Setup
+
+```{r setup, echo=TRUE}
+knitr::opts_chunk$set(fig.width=6, fig.height=6*0.618, 
+                      fig.path=paste0('Figures/Turtola_etal_revision/'), 
+                      dev='pdf', 
+                      echo=TRUE, warning=FALSE, message=FALSE, 
+                      error=TRUE)
+```
+
+```{r load packages, echo=T, warning=F, message=F}
+suppressWarnings(library('tidyverse'))
+suppressWarnings(library('magrittr'))
+suppressWarnings(library('knitr'))
+```
+
+
+# About
+
+Plots shown in Turtoal et al. with minor style adjustments using vector graphics software.
+
+# Load the data
+
+```{r, cache=T}
+(pA_df <- readRDS("data/Pawel_Series2_all_pA.rds"))
+
+distinct(pA_df, temp, rapa, plasmid, pab1DRRM4)
+head(pA_df)
+
+pA_df2 <- pA_df %>%
+  separate(contig, c("name", "chr"), "::")
+```
+
+
+# Define hs-induced RNAs
+
+to define subclass for heat-induced transcripts:
+1) edgeR analysis of expression changes between 38C vs 25C in 'empty;no rapa' samples
+
+this is done with function from R package nanotail (https://github.com/smaegol/nanotail) which can be installed like this:
+.) install.packages("devtools")
+.) devtools::install_github('smaegol/nanotail')
+
+```{r}
+library(nanotail)
+```
+
+
+#### differential expression at 38C vs. 25C, for "MEX67-AA; pPgal-empty; no rapamycin"
+
+```{r}
+diff_expr_temp <- nanotail::calculate_diff_exp_binom(
+  pA_df %>%
+    dplyr::filter(plasmid == "empty", rapa == "no", pab1DRRM4 == "") %>%
+    mutate(temp = factor(temp)) %>%
+    dplyr::rename(transcript = contig),
+  grouping_factor = "temp",
+  condition1 = "y25",
+  condition2 = "y38"
+)
+```
+
+histogram of  samples
+
+```{r histogram heatshock DE}
+hist(log2(diff_expr_temp$fold_change), breaks = 100)
+```
+
+
+#### MA plot
+differential expression [38C vs. 25C, for "MEX67-AA; pPgal-empty; no rapamycin" samples] plotted with mean expression,
+```{r MA plot heatshock DE}
+plot(
+  log2(diff_expr_temp$fold_change) ~ diff_expr_temp$mean_expr,
+  log = 'x',
+  pch = ifelse(diff_expr_temp$fold_change > 2, 19, 16),
+  col = case_when(
+    diff_expr_temp$padj < .05 &
+      diff_expr_temp$fold_change > 2 ~ 'darkred',
+    diff_expr_temp$padj < .05 &
+      diff_expr_temp$fold_change > 1 ~ 'red',
+    diff_expr_temp$padj < .05 &
+      diff_expr_temp$fold_change < 1 ~ 'blue',
+    diff_expr_temp$padj >= .05 ~ 'gray'
+  ),
+  cex = ifelse(diff_expr_temp$padj < .05, .2, .1)
+)
+abline(h = c(-1, 0, 1), lty = c(2, 1, 2))
+abline(v = c(25, 50, 100), lty = 2)
+```
+
+#### define hsRNAs
+
+define hsRNAs; fold change > 3 [38 vs 25 in empty no rapa], mean_expr >50
+```{r}
+heat_shock_induced <- diff_expr_temp %>%
+  filter(fold_change != Inf,
+         significance != "NotSig",
+         mean_expr > 50,
+         fold_change > 3)
+
+
+heat_shock_induced$transcript
+```
+
+SSA3,AAR2 and tT(UGU)G2,YGR256W are annotated together with neighboring ncRNAs but their
+pA reads originate from the mRNA 3?ends; label them later as SSA3 and GND2
+
+```{r}
+(hsRNAs <- heat_shock_induced$transcript %>%
+  as.character %>%
+  sub('::.*', '', .))
+```
+
+```{r}
+write_tsv(data.frame(name=hsRNAs), 'data/hsRNAs_n48.tsv')
+```
+
+
+# Fig 1C 
+
+#### individual single genes shown in plot:
+
+ups: ICY2 is recalled ATG41 in paper since is the newest systematic name according to SGD.
+
+```{r}
+Fig1C_RNAs <- c('YLL026W_HSP104', 'YER103W_SSA4', 'YCR021C_HSP30', 'YGR142W_BTN2', 'YPL250C_ICY2')
+```
+
+
+```{r}
+Fig1C_df <- pA_df2 %>%
+  dplyr::filter(name %in% Fig1C_RNAs,
+                temp == 'y38',
+                pab1DRRM4 == '',
+                (rapa == 'no' & plasmid == 'empty') | (rapa == 'xRapa' &  (plasmid == 'empty' | plasmid == 'pNAB2')))
+```
+
+#### for the 48 hsRNAs as cohort and combine with single genes
+
+```{r}
+Fig1C_hsRNAs <- pA_df2 %>%
+  dplyr::filter(name %in% hsRNAs,
+                temp == 'y38',
+                pab1DRRM4 == '',
+                (rapa == 'no' & plasmid == 'empty') | (rapa == 'xRapa' &  (plasmid == 'empty' | plasmid == 'pNAB2'))) %>%
+  dplyr::mutate(name = 'hsRNAs n=48')
+
+(Fig1C_df %<>% 
+  bind_rows(., Fig1C_hsRNAs) %>%
+  mutate(cond = paste0(rapa, plasmid),
+         name = sub('.*_', '', name),
+         name = factor(name, levels=c(name = sub('.*_', '', Fig1C_RNAs), 'hsRNAs n=48'))
+         ))
+```
+
+
+
+#### create violin plot ups: minor style adjustments in vector graphics software
+```{r precursor to Fig 1C}
+p <- Fig1C_df %>%
+  mutate(cond = paste0(rapa, plasmid),
+         name = sub('.*_', '', name),
+         name = factor(name, levels=c(name = sub('.*_', '', Fig1C_RNAs), 'hsRNAs n=48'))
+         ) %>%
+ggplot(.,
+       aes(x=cond,
+           y=polya_length,
+           fill=plasmid)) +
+  geom_hline(yintercept=70, linetype=2, color='red') +
+  geom_violin(scale = 'width') +
+  coord_cartesian(ylim=c(-15,260)) +
+  scale_y_continuous(breaks=seq(0,250,50)) +
+  scale_fill_manual(values = c('lightgray', 'darkgreen')) +
+  geom_boxplot(fill='lightgray', width=.2, outlier.shape=NA) +
+  facet_grid(.~name) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle=45, hjust=1),
+        panel.grid.minor.y=element_blank(),
+        panel.grid.major.x=element_blank(),panel.border = element_blank())
+```
+
+
+#### collect and add read count data information to plot
+
+```{r}
+Fig1C_cnts <- Fig1C_df %>%
+  group_by(name, cond, temp, rapa, plasmid, pab1DRRM4) %>%
+  summarize(cnt = n())
+
+Fig1C_cnts <- percondition_per_contig_totals %>%
+  dplyr::filter(name %in% Fig1C_RNAs,
+                temp == 'y38',
+                pab1DRRM4 == '',
+                (rapa == 'no' & plasmid == 'empty') | (rapa == 'xRapa' &  (plasmid == 'empty' | plasmid == 'pNAB2'))) %>%
+  bind_rows(., Fig1C_hsRNAs_cnts) %>%
+  mutate(cond = paste0(rapa, plasmid),
+         name = sub('.*_', '', name),
+         name = factor(name, levels=c(name = sub('.*_', '', Fig1C_RNAs), 'hsRNAs n=48')))
+```
+
+
+```{r Fig 1C}
+p +
+  geom_text(
+    data = Fig1C_cnts,
+    aes(
+      x = cond,
+      y = 0,
+      label = paste0('n=', cnt)
+    ),
+    angle = 45,
+    hjust = 1,
+    vjust = 'top',
+    size=2,
+    nudge_x=.2,
+    nudge_y=-2
+  )
+```
+
+ups: minor update to first submission on cnt of hsRNAs n=48 violins reason for difference not resolved
+
+
+## bottom of Fig1C read counts per lib size
+
+get total reads per individual sample (ie each replicate separate) for 48-cohort combined
+
+```{r}
+Fig1C_hsRNAs_persample_cnts <- persample_per_contig_totals %>%
+  dplyr::filter(name %in% hsRNAs,
+                temp == 'y38',
+                pab1DRRM4 == '',
+                (rapa == 'no' & plasmid == 'empty') | (rapa == 'xRapa' &  (plasmid == 'empty' | plasmid == 'pNAB2'))) %>%
+  group_by(temp, rapa, plasmid, pab1DRRM4, sample_nr) %>%
+  summarize(cnt = sum(cnt)) %>%
+  dplyr::mutate(name = 'hsRNAs n=48')
+
+```
+
+for individual genes and combine with 48-cohort
+```{r}
+Fig1C_readpercentlib <- persample_per_contig_totals %>%
+  dplyr::filter(name %in% Fig1C_RNAs,
+                temp == 'y38',
+                pab1DRRM4 == '',
+                (rapa == 'no' & plasmid == 'empty') | (rapa == 'xRapa' &  (plasmid == 'empty' | plasmid == 'pNAB2'))) %>%
+  bind_rows(., Fig1C_hsRNAs_persample_cnts) %>%
+  left_join(., dplyr::rename(persample_totals, lib_cnts = cnt)) %>%
+  mutate(percent_of_lib = 100*cnt/lib_cnts,
+         cond = paste0(rapa, plasmid),
+         name = sub('.*_', '', name),
+         name = factor(name, levels=c(name = sub('.*_', '', Fig1C_RNAs), 'hsRNAs n=48')))
+```
+
+
+
+#### show average of replicates together with individual replicates
+
+```{r}
+Fig1C_readpercentlib_means <- Fig1C_readpercentlib %>%
+  group_by(name,cond,temp,rapa,plasmid,pab1DRRM4) %>%
+  summarize(percent_of_lib=mean(percent_of_lib))
+```
+
+
+ups --> actual Figure is made of three parts, put together in vector graphics software
+
+#### lower bottom scale
+```{r Fig1C lower panel bottom scale}
+ggplot(Fig1C_readpercentlib,
+       aes(x=cond,
+           y=percent_of_lib,
+           fill=plasmid)) +
+  geom_bar(data=Fig1C_readpercentlib_means, aes(x=cond,
+                                                y=percent_of_lib,
+                                                fill=plasmid), color='black', stat='identity', position='dodge') +
+  geom_point(colour="black",pch=21) +
+  scale_y_continuous(breaks=seq(0,.7,.1)) +
+  coord_cartesian(ylim=c(0,.35)) +
+  scale_fill_manual(values = c('lightgray', 'darkgreen')) +
+  scale_color_manual(values = c('lightgray', 'darkgreen')) +
+  facet_grid(.~name) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle=45, hjust=1),
+        panel.grid.minor.y=element_blank(),
+        panel.grid.major.x=element_blank(),panel.border = element_blank())
+```
+
+
+
+#### lower top scale
+```{r Fig1C lower panel top scale}
+ggplot(Fig1C_readpercentlib,
+       aes(x=cond,
+           y=percent_of_lib,
+           fill=plasmid)) +
+  geom_bar(data=Fig1C_readpercentlib_means, aes(x=cond,
+                                                y=percent_of_lib,
+                                                fill=plasmid), color='black', stat='identity', position='dodge') +
+  geom_point(colour="black",pch=21) +
+  scale_y_continuous(breaks=seq(0,.7,.1)) +
+  coord_cartesian(ylim=c(.55,.75)) +
+  scale_fill_manual(values = c('lightgray', 'darkgreen')) +
+  scale_color_manual(values = c('lightgray', 'darkgreen')) +
+  facet_grid(.~name) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle=45, hjust=1),
+        panel.grid.minor.y=element_blank(),
+        panel.grid.major.x=element_blank(),panel.border = element_blank())
+```
+
+
+#### right scale
+```{r Fig1C lower panel right}
+ggplot(Fig1C_readpercentlib,
+       aes(x=cond,
+           y=percent_of_lib,
+           fill=plasmid)) +
+  geom_bar(data=Fig1C_readpercentlib_means, aes(x=cond,
+                                                y=percent_of_lib,
+                                                fill=plasmid), color='black', stat='identity', position='dodge') +
+  geom_point(colour="black",pch=21) +
+  scale_y_continuous(breaks=seq(0,8,2)) +
+  coord_cartesian(ylim=c(0,9)) +
+  scale_fill_manual(values = c('lightgray', 'darkgreen')) +
+  scale_color_manual(values = c('lightgray', 'darkgreen')) +
+  facet_grid(.~name) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle=45, hjust=1),
+        panel.grid.major.x=element_blank(),panel.border = element_blank())
+```
+
+
+
+# Fig S1D
+
+## Left part of S1D (hsRNA 48) is same as Fig1C put split by sample in plot
+```{r}
+FigS1D_df <- pA_df2 %>%
+  dplyr::filter(pab1DRRM4 == '',
+                (plasmid == 'empty' | plasmid == 'pNAB2'))
+
+FigS1D_hsRNAs <- FigS1D_df %>%
+  dplyr::filter(name %in% hsRNAs) %>%
+  dplyr::mutate(name = 'hsRNAs n=48') %>%
+  mutate(cond = paste0(temp, rapa, plasmid, sample_nr),
+         cond = factor(cond, levels=c('y25noempty7',
+                                      'y25nopNAB28',
+                                      'y38noempty11',
+                                      'y38noempty15',
+                                      'y38xRapaempty13',
+                                      'y38xRapaempty9',
+                                      'y38nopNAB212',
+                                      'y38nopNAB216',
+                                      'y38xRapapNAB210',
+                                      'y38xRapapNAB214')))
+```
+
+#### create violin plot ups: minor style adjustments in vector graphics software
+```{r precursor to Fig S1D hsRNAs}
+p <- FigS1D_hsRNAs %>%
+  ggplot(.,
+         aes(x=cond,
+             y=polya_length,
+             fill=plasmid)) +
+  geom_hline(yintercept=70, linetype=2, color='red') +
+  geom_violin(scale = 'width') +
+  coord_cartesian(ylim=c(-15,260)) +
+  scale_y_continuous(breaks=seq(0,250,50)) +
+  scale_fill_manual(values = c('lightgray', 'darkgreen')) +
+  geom_boxplot(fill='lightgray', width=.2, outlier.shape=NA) +
+  facet_grid(.~name) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle=45, hjust=1),
+        panel.grid.minor.y=element_blank(),
+        panel.grid.major.x=element_blank(),panel.border = element_blank())
+```
+
+#### collect and add read count data information to plot
+```{r Fig S1D hsRNAs}
+FigS1D_hsRNAs_cnts <- FigS1D_hsRNAs %>%
+  group_by(cond, temp, rapa, plasmid, pab1DRRM4, sample_nr) %>%
+  summarize(cnt = n()) %>%
+  dplyr::mutate(name = 'hsRNAs n=48')
+
+p +
+  geom_text(
+    data = FigS1D_hsRNAs_cnts,
+    aes(
+      x = cond,
+      y = 0,
+      label = paste0('n=', cnt)
+    ),
+    angle = 45,
+    hjust = 1,
+    vjust = 'top',
+    size=2,
+    nudge_x=.2,
+    nudge_y=-2
+  )
+```
+
+
+## S1D middle part
+```{r}
+FigS1D_alltranscripts <- FigS1D_df %>%
+  dplyr::mutate(name = 'all transcripts') %>%
+  mutate(cond = paste0(temp, rapa, plasmid),
+         cond = factor(cond, levels=c('y25noempty',
+                                      'y25nopNAB2',
+                                      'y38noempty',
+                                      'y38xRapaempty',
+                                      'y38nopNAB2',
+                                      'y38xRapapNAB2')))
+```
+
+#### create violin plot ups: minor style adjustments in vector graphics software
+```{r precursor to Fig S1D all transcripts}
+p <- FigS1D_alltranscripts %>%
+  ggplot(.,
+         aes(x=cond,
+             y=polya_length,
+             fill=plasmid)) +
+  geom_hline(yintercept=70, linetype=2, color='red') +
+  geom_violin(scale = 'width') +
+  coord_cartesian(ylim=c(-15,260)) +
+  scale_y_continuous(breaks=seq(0,250,50)) +
+  scale_fill_manual(values = c('lightgray', 'darkgreen')) +
+  geom_boxplot(fill='lightgray', width=.2, outlier.shape=NA) +
+  facet_grid(.~name) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle=45, hjust=1),
+        panel.grid.minor.y=element_blank(),
+        panel.grid.major.x=element_blank(),panel.border = element_blank())
+```
+
+#### collect and add read count data information to plot
+```{r }
+(FigS1D_alltranscripts_cnts <- FigS1D_alltranscripts %>%
+  group_by(cond, temp, rapa, plasmid, pab1DRRM4) %>%
+  summarize(cnt = n()) %>%
+  dplyr::mutate(name = 'all transcripts'))
+```
+
+
+```{r Fig S1D all transcripts}
+p +
+  geom_text(
+    data = FigS1D_alltranscripts_cnts,
+    aes(
+      x = cond,
+      y = 0,
+      label = paste0('n=', cnt)
+    ),
+    angle = 45,
+    hjust = 1,
+    vjust = 'top',
+    size=1,
+    nudge_x=.2,
+    nudge_y=-2
+  )
+```
+
+## S1D right part, now same display as in Fig1C
+ups: RGI1 is now systematic name for YER067W_YER067W
+
+
+```{r}
+S1D_genes <- c('YCR012W_PGK1', 'YBR009C_HHF1', 'YLR327C_TMA10')
+
+FigS1D_right <- pA_df2 %>%
+  dplyr::filter(name %in% S1D_genes,
+                temp == 'y38',
+                pab1DRRM4 == '',
+                (rapa == 'no' & plasmid == 'empty') | (rapa == 'xRapa' &  (plasmid == 'empty' | plasmid == 'pNAB2'))) %>%
+  mutate(cond = paste0(temp, rapa, plasmid),
+         cond = factor(cond, levels=c('y38noempty',
+                                      'y38xRapaempty',
+                                      'y38xRapapNAB2')),
+         name = sub('.*_', '', name),
+         name = factor(name, levels=sub('.*_', '', S1D_genes)))
+
+```
+
+#### create violin plot ups: minor style adjustments in vector graphics software
+```{r precursor to Fig S1D}
+p <- FigS1D_right %>%
+  ggplot(.,
+         aes(x=cond,
+             y=polya_length,
+             fill=plasmid)) +
+  geom_hline(yintercept=70, linetype=2, color='red') +
+  geom_violin(scale = 'width') +
+  coord_cartesian(ylim=c(-15,260)) +
+  scale_y_continuous(breaks=seq(0,250,50)) +
+  scale_fill_manual(values = c('lightgray', 'darkgreen')) +
+  geom_boxplot(fill='lightgray', width=.2, outlier.shape=NA) +
+  facet_grid(.~name) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle=45, hjust=1),
+        panel.grid.minor.y=element_blank(),
+        panel.grid.major.x=element_blank(),panel.border = element_blank())
+```
+
+#### collect and add read count data information to plot
+```{r Fig S1D}
+FigS1D_right_cnts <- FigS1D_right %>%
+  group_by(name, cond, temp, rapa, plasmid, pab1DRRM4) %>%
+  summarize(cnt = n())
+
+p +
+  geom_text(
+    data = FigS1D_right_cnts,
+    aes(
+      x = cond,
+      y = 0,
+      label = paste0('n=', cnt)
+    ),
+    angle = 45,
+    hjust = 1,
+    vjust = 'top',
+    size=2,
+    nudge_x=.2,
+    nudge_y=-2
+  )
+```
+
+
+
+# Fig 1D
+
+concerns 4tU RNA pA tail lengths
+### load data
+```{r}
+(tu_df <- readRDS("data/Pawel_4sU_all_pA.rds"))
+
+head(tu_df)
+```
+
+
+```{r}
+distinct(tu_df, strain, plasmid, id, rapa, rep)
+```
+
+
+sample id 18 was wrongly annotated as 'empty' and 'minusrapa' although it is 'pNAB2' and 'rapa', also fname is incorrect
+rename sample 18
+also fname is incorrect, remove fname as it is redundant
+add column for 4tU=17, 18, 19, 20, no4tU=21
+
+```{r}
+tu_df %<>% 
+  mutate(plasmid = ifelse(id == 18, 'pNAB2', plasmid),
+         rapa = ifelse(id == 18, "rapa", rapa)) %>%
+  dplyr::select(-c(fname))
+
+tu_df$labelling <-
+  recode(
+    tu_df$id,
+    "17" =  "4tU",
+    "18" =  "4tU",
+    "19" =  "4tU",
+    "20" =  "4tU",
+    "21" =  "no_labelling"
+  )
+
+```
+
+separate contig into systematic name and gene name+chr locus
+```{r}
+tu_df %<>%
+  separate(contig, c("name", "locus"), "::")
+```
+
+### heatmap all RNAs
+```{r}
+Fig1D_bins <- tu_df %>%
+  filter(!(rapa == 'minusrapa' & plasmid == 'pNAB2'), labelling == '4tU') %>%
+  mutate(pA_bin = 10*round(polya_length/10,0),
+         pA_bin = ifelse(pA_bin > 200, 200, pA_bin)) %>%
+  group_by(name, strain, rapa, plasmid, pA_bin) %>%
+  summarize(cnt = n())
+```
+
+
+```{r}
+above_cutoff <- tu_df %>%
+  filter(rapa == 'rapa', plasmid == 'pNAB2', labelling == '4tU') %>%
+  group_by(name, strain, rapa, plasmid) %>%
+  summarize(cnt = n()) %>%
+  filter(cnt > 20)
+
+nrow(above_cutoff)
+```
+
+#### ordering in heatmap
+
+by median pA length
+```{r}
+transcript_order <- tu_df %>%
+  filter(rapa == 'rapa', plasmid == 'pNAB2', labelling == '4tU', name %in% above_cutoff$name) %>%
+  group_by(name, strain, rapa, plasmid) %>%
+  summarize(median_pA_length = median(polya_length)) %>%
+  arrange(-median_pA_length)
+```
+
+
+```{r}
+Fig1D_data <- Fig1D_bins %>%
+  filter(name %in% above_cutoff$name) %>%
+  mutate(name = factor(name, levels=transcript_order$name),
+         cond = paste0(rapa,plasmid)) %>%
+  group_by(name, cond) %>%
+  mutate(norm_cnt = cnt/sum(cnt))
+```
+
+
+```{r Fig 1D all transcripts}
+ggplot(Fig1D_data,
+         aes(x=name,
+             y=pA_bin,
+             fill=norm_cnt)) +
+  geom_tile() +
+  scale_fill_gradient(low='white', high='firebrick4') +
+  facet_grid(.~cond) +
+  coord_fixed(ratio = 4) +
+  theme_bw() +
+  theme(panel.grid=element_blank(),
+        axis.text.x=element_blank())
+```
+
+### version with only mRNAs
+```{r}
+above_cutoff <- tu_df %>%
+  filter(rapa == 'rapa', plasmid == 'pNAB2', labelling == '4tU', grepl('^Y.*_', name)) %>%
+  group_by(name) %>%
+  summarize(cnt = n()) %>%
+  filter(cnt > 20)
+
+nrow(above_cutoff)
+```
+
+#### ordering in heatmap
+
+by median pA length
+```{r}
+transcript_order <- tu_df %>%
+  filter(rapa == 'rapa', plasmid == 'pNAB2', labelling == '4tU', name %in% above_cutoff$name) %>%
+  group_by(name, strain, rapa, plasmid) %>%
+  summarize(median_pA_length = median(polya_length)) %>%
+  arrange(-median_pA_length)
+```
+
+
+```{r Fig 1D mRNAs only}
+Fig1D_mRNAs_data <- Fig1D_bins %>%
+  filter(name %in% above_cutoff$name) %>%
+  mutate(name = factor(name, levels=transcript_order$name),
+         cond = paste0(rapa,plasmid)) %>%
+  group_by(name, cond) %>%
+  mutate(norm_cnt = cnt/sum(cnt))
+
+ggplot(Fig1D_mRNAs_data,
+       aes(x=name,
+           y=pA_bin,
+           fill=norm_cnt)) +
+  geom_tile() +
+  scale_fill_gradient(low='white', high='firebrick4') +
+  facet_grid(.~cond) +
+  coord_fixed(ratio = 4) +
+  theme_bw() +
+  theme(panel.grid=element_blank(),
+        axis.text.x=element_blank())
+```
+
+
+
+# Fig S1E 
+
+```{r}
+FigS1E_alltranscripts <- tu_df %>%
+  dplyr::mutate(name = 'all transcripts') %>%
+  mutate(cond = paste0(labelling, rapa, plasmid),
+         cond = factor(cond,
+                       levels=c('no_labellingminusrapaempty',
+                                '4tUminusrapaempty',
+                                '4tUrapaempty',
+                                '4tUminusrapapNAB2',
+                                '4tUrapapNAB2')))
+
+```
+
+#### create violin plot 
+ups: minor style adjustments in vector graphics software
+```{r precursor to Fig S1E all transcripts}
+p <- FigS1E_alltranscripts %>%
+  ggplot(.,
+         aes(x=cond,
+             y=polya_length,
+             fill=plasmid)) +
+  geom_hline(yintercept=70, linetype=2, color='red') +
+  geom_violin(scale = 'width') +
+  coord_cartesian(ylim=c(-15,260)) +
+  scale_y_continuous(breaks=seq(0,250,50)) +
+  scale_fill_manual(values = c('lightgray', 'darkgreen')) +
+  geom_boxplot(fill='lightgray', width=.2, outlier.shape=NA) +
+  facet_grid(.~name) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle=45, hjust=1),
+        panel.grid.minor.y=element_blank(),
+        panel.grid.major.x=element_blank(),panel.border = element_blank())
+```
+
+#### collect and add read count data information to plot
+```{r Fig S1E all transcripts}
+FigS1E_alltranscripts_cnts <- FigS1E_alltranscripts %>%
+  group_by(cond, strain, rapa, plasmid, labelling) %>%
+  summarize(cnt = n())
+
+p +
+  geom_text(
+    data = FigS1E_alltranscripts_cnts,
+    aes(
+      x = cond,
+      y = 0,
+      label = paste0('n=', cnt)
+    ),
+    angle = 45,
+    hjust = 1,
+    vjust = 'top',
+    size=2,
+    nudge_x=.2,
+    nudge_y=-2
+  )
+```
+
+
+
+## Fig S1E CYC1
+
+#### load CYC1 read info
+reads selected to overlap CYC1 gene, ie region chrX:526272-526848 got readname, start of alignment and read length from bam file
+
+```{r}
+bam_dir <-
+  'data/CYC1_alignments/'
+fnames <- dir(bam_dir, '_CYC1_start_end.coord')
+```
+
+
+```{r}
+(
+  cyc1_reads <- lapply(fnames, function(fname)
+    read_tsv(
+      paste0(bam_dir, fname),
+      col_names = c('readname', 'start', 'length')
+    ) %>%
+      mutate(fname = sub(
+        '_genome_mapping_CYC1_start_end.coord', '', fname
+      )) %>%
+      tidyr::separate(fname, c('strain', 'rapa', 'plasmid', 'id', 'rep'), remove =
+                        F)) %>%
+    bind_rows
+)
+```
+
+
+```{r CYC1 read ends position}
+ggplot(cyc1_reads, aes(x = start)) +
+  stat_ecdf() +
+  coord_cartesian(xlim = c(526272, 526848))
+```
+
+
+zoom in
+```{r CYC1 read ends zoom}
+ggplot(cyc1_reads, aes(x = start)) +
+  stat_ecdf() +
+  coord_cartesian(xlim = c(526700, 526750))
+```
+
+
+conclusion from those plots
+short (pPgal-plasmids derived) reads start around 526735-526738
+this is the start of the 3'UTR and we call these CYC1term
+reads from endogenous CYC1 will extend further to 5' and we call those *CYC1long*
+```{r}
+(
+  cyc1_class <- cyc1_reads %>%
+    mutate(
+      cyc1_class = case_when(
+        start >= 526735 & start <= 526738 ~ 'CYC1term',
+        start < 526735 ~ 'CYC1long',
+        start > 526738 ~ 'NA'
+      )
+    ) %>%
+    dplyr::select(readname, strain, rapa,  plasmid, id,  rep, cyc1_class)
+)
+```
+
+#### fix labelling and plasmid, rapa info as explained above
+```{r}
+cyc1_class$labelling <-
+  recode(
+    cyc1_class$id,
+    "17" =  "4tU",
+    "18" =  "4tU",
+    "19" =  "4tU",
+    "20" =  "4tU",
+    "21" =  "no_labelling"
+  )
+
+cyc1_class %<>%
+  mutate(plasmid = ifelse(id == 18, 'pNAB2', plasmid),
+         rapa = ifelse(id == 18, "rapa", rapa))
+
+
+(cyc1_pA <- tu_df %>%
+    dplyr::filter(grepl('CYC1', name)))
+```
+
+
+```{r}
+unique(cyc1_pA$name)
+```
+
+
+```{r}
+distinct(cyc1_pA, strain, rapa, plasmid, id, rep, labelling)
+```
+
+
+```{r}
+distinct(cyc1_class, strain, rapa, plasmid, id, rep, labelling)
+```
+
+
+```{r}
+cyc1_pA_class <- left_join(cyc1_class, cyc1_pA) %>%
+  dplyr::filter(!is.na(polya_length))
+
+(
+  cyc1_cnts <- cyc1_pA_class %>%
+    group_by(strain, rapa, plasmid, id, cyc1_class, labelling) %>%
+    summarize(cnt = n())
+)
+
+distinct(cyc1_pA_class, strain, rapa, plasmid, id, labelling)
+```
+
+
+```{r}
+cyc1_df <- cyc1_pA_class %>%
+  filter(!is.na(cyc1_class), cyc1_class != 'NA', cyc1_class=='CYC1long') %>%
+  mutate(
+    cond = paste0(labelling, '_', rapa, '_', plasmid),
+    cond = factor(
+      cond,
+      levels = c(
+        'no_labelling_minusrapa_empty',
+        '4tU_minusrapa_empty',
+        '4tU_rapa_empty',
+        '4tU_minusrapa_pNAB2',
+        '4tU_rapa_pNAB2'
+      )
+    )
+  )
+```
+
+
+#### create violin plot 
+```{r precursor to Fig S1E CYC1}
+p <- cyc1_df %>%
+  ggplot(.,
+         aes(x=cond,
+             y=polya_length,
+             fill=plasmid)) +
+  geom_hline(yintercept=70, linetype=2, color='red') +
+  geom_violin(scale = 'width') +
+  coord_cartesian(ylim=c(-15,260)) +
+  scale_y_continuous(breaks=seq(0,250,50)) +
+  scale_fill_manual(values = c('lightgray', 'darkgreen')) +
+  geom_boxplot(fill='lightgray', width=.2, outlier.shape=NA) +
+  facet_grid(.~name) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle=45, hjust=1),
+        panel.grid.minor.y=element_blank(),
+        panel.grid.major.x=element_blank(),panel.border = element_blank())
+```
+
+
+#### collect and add read count data information to plot
+```{r Fig S1E CYC1}
+FigS1E_cyc1_cnts <- cyc1_df %>%
+  group_by(cond, strain, rapa, plasmid, labelling) %>%
+  summarize(cnt = n())
+
+p +
+  geom_text(
+    data = FigS1E_cyc1_cnts,
+    aes(
+      x = cond,
+      y = 0,
+      label = paste0('n=', cnt)
+    ),
+    angle = 45,
+    hjust = 1,
+    vjust = 'top',
+    size=2,
+    nudge_x=.2,
+    nudge_y=-2
+  )
+```
+
+
+
+## Fig S1E hyperadenylated
+
+#### defining a group of hyperadenylated transcripts
+filter genes that have <20 reads and median pA higher in rapa vs control (pA>30)
+
+```{r}
+reads_above_twenty <- tu_df %>%
+  group_by(name, rapa, plasmid, id, labelling) %>%
+  summarize(cnt = n(), median_pA = median(polya_length)) %>%
+  filter(cnt > 20, grepl('^Y', name))
+
+hyperadenylated <- reads_above_twenty %>%
+  ungroup %>%
+  filter(id == '17' | id == '19') %>%
+  dplyr::select(name,rapa,plasmid,median_pA) %>%
+  unite(cond, c('rapa', 'plasmid')) %>%
+  spread(cond,median_pA) %>%
+  filter(rapa_empty > 30 & rapa_empty > minusrapa_empty)
+
+hyperadenylated
+```
+
+```{r}
+hyperadenylated$name
+```
+
+```{r}
+FigS1E_hyperA <- tu_df %>%
+  filter(name %in% hyperadenylated$name) %>%
+  mutate(
+    name = 'hyperadenylated',
+    cond = paste0(labelling, '_', rapa, '_', plasmid),
+    cond = factor(
+      cond,
+      levels = c(
+        'no_labelling_minusrapa_empty',
+        '4tU_minusrapa_empty',
+        '4tU_rapa_empty',
+        '4tU_minusrapa_pNAB2',
+        '4tU_rapa_pNAB2'
+      )
+    )
+  )
+```
+
+
+
+#### create violin plot ups: minor style adjustments in vector graphics software
+```{r precursor for Fig S1E hyperA}
+p <- FigS1E_hyperA %>%
+  ggplot(.,
+         aes(x=cond,
+             y=polya_length,
+             fill=plasmid)) +
+  geom_hline(yintercept=70, linetype=2, color='red') +
+  geom_violin(scale = 'width') +
+  coord_cartesian(ylim=c(-15,260)) +
+  scale_y_continuous(breaks=seq(0,250,50)) +
+  scale_fill_manual(values = c('lightgray', 'darkgreen')) +
+  geom_boxplot(fill='lightgray', width=.2, outlier.shape=NA) +
+  facet_grid(.~name) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle=45, hjust=1),
+        panel.grid.minor.y=element_blank(),
+        panel.grid.major.x=element_blank(),panel.border = element_blank())
+```
+
+#### collect and add read count data information to plot
+```{r Fig S1E hyperA}
+FigS1E_hyperA_cnts <- FigS1E_hyperA %>%
+  group_by(cond, strain, rapa, plasmid, labelling) %>%
+  summarize(cnt = n())
+
+p +
+  geom_text(
+    data = FigS1E_hyperA_cnts,
+    aes(
+      x = cond,
+      y = 0,
+      label = paste0('n=', cnt)
+    ),
+    angle = 45,
+    hjust = 1,
+    vjust = 'top',
+    size=1.5,
+    nudge_x=.2,
+    nudge_y=-2
+  )
+```
+
+
+
+# Fig 2B
+```{r}
+Fig2B_hsRNAs <- pA_df2 %>%
+  dplyr::filter(name %in% hsRNAs,
+                temp == 'y38',
+                plasmid == 'empty') %>%
+  dplyr::mutate(name = 'hsRNAs n=48')
+```
+
+#### create violin plot ups: minor style adjustments in vector graphics software
+```{r precursor to Fig 2B}
+p <- Fig2B_hsRNAs %>%
+  ggplot(.,
+         aes(x=polya_length,
+             color=pab1DRRM4,
+             fill=pab1DRRM4)) +
+  geom_density(alpha=.5, color='black') +
+  facet_grid(rapa~., scales='free') +
+  coord_cartesian(xlim=c(0,250),expand = F) +
+  scale_x_continuous(breaks=seq(0,250,50)) +
+  scale_y_continuous(breaks=seq(0,.03,.01),limits = c(0,.031)) +
+  scale_fill_manual(values = c('lightgray', 'orange')) +
+  scale_color_manual(values = c('lightgray', 'orange')) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle=45, hjust=1),
+        panel.grid=element_blank())
+
+p
+```
+
+
+#### collect and add read count data information to plot
+```{r Fig 2B}
+Fig2B_hsRNAs_cnts <- Fig2B_hsRNAs %>%
+  group_by(temp, rapa, plasmid, pab1DRRM4) %>%
+  summarize(cnt = n()) %>%
+  dplyr::mutate(name = 'hsRNAs n=48',
+                ypos = ifelse(pab1DRRM4 == '', .01, .008))
+
+p +
+  geom_text(
+    data = Fig2B_hsRNAs_cnts,
+    aes(
+      x = 240,
+      y = ypos,
+      label = paste0('n=', cnt),
+      color=pab1DRRM4
+    ),
+    angle = 0,
+    hjust = 1,
+    vjust = 'top',
+    size=4
+  )
+```
+
+
+
+# Fig 2D 
+
+#### data for individual single genes shown in plot
+
+```{r}
+Fig2D_RNAs <- c('YER103W_SSA4', 'YLL026W_HSP104')
+
+Fig2D_df <- pA_df2 %>%
+  dplyr::filter(name %in% Fig2D_RNAs,
+                temp == 'y38',
+                pab1DRRM4 == 'dRRM4',
+                rapa == 'xRapa')
+```
+
+
+#### create violin plot ups: minor style adjustments in vector graphics software
+
+```{r precursor to Fig 2D}
+Fig2D_df %<>%
+  mutate(name = sub('.*_', '', name),
+         name = factor(name, levels=sub('.*_', '', Fig2D_RNAs)))
+
+p <- Fig2D_df %>%
+  mutate(plasmid=factor(plasmid, levels=c('pNAB2', 'pPAB1', 'empty')),
+         polya_length_int = as.integer(polya_length),
+         polya_length_int = ifelse(polya_length_int>250,250,polya_length_int)) %>%
+  group_by(name, temp, rapa, plasmid, pab1DRRM4, polya_length_int) %>%
+  summarize(cnt=n()) %>%
+  ggplot(.,
+         aes(x=polya_length_int,
+             y=cnt,
+             fill=plasmid)) +
+  geom_bar(stat='identity', position='dodge') +
+  facet_grid(plasmid~name, scales='free') +
+  scale_fill_manual(values = c('darkgreen', 'navyblue', 'orange')) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle=45, hjust=1),
+        panel.grid=element_blank())
+
+p
+```
+
+#### collect and add read count data information to plot
+
+```{r Fig 2D}
+Fig2D_hsRNAs_cnts <- Fig2D_df %>%
+  mutate(plasmid=factor(plasmid, levels=c('pNAB2', 'pPAB1', 'empty')),
+         polya_length_int = as.integer(polya_length),
+         polya_length_int = ifelse(polya_length_int>250,250,polya_length_int)) %>%
+  group_by(name, temp, rapa, plasmid, pab1DRRM4) %>%
+  summarize(cnt=n())
+
+p +
+  geom_text(
+    data = Fig2D_hsRNAs_cnts,
+    aes(
+      x = 240,
+      y = 10,
+      label = paste0('n=', cnt)
+    ),
+    angle = 0,
+    hjust = 1,
+    vjust = 'top',
+    size=4
+  )
+```
+
+
+
+# Fig 2E 
+
+```{r}
+Fig2E_df <- pA_df2 %>%
+  dplyr::filter(name %in% hsRNAs,
+                temp == 'y38',
+                pab1DRRM4 == 'dRRM4',
+                rapa == 'xRapa') %>%
+  mutate(name = 'hsRNAs n=48')
+```
+
+```{r precursor for Fig 2E}
+p_Fig2E <- Fig2E_df %>%
+  mutate(plasmid=factor(plasmid, levels=c('pNAB2', 'pPAB1', 'empty')),
+         polya_length_int = as.integer(polya_length),
+         polya_length_int = ifelse(polya_length_int>250,250,polya_length_int)) %>%
+  group_by(name, temp, rapa, plasmid, pab1DRRM4, polya_length_int) %>%
+  summarize(cnt=n()) %>%
+  ggplot(.,
+         aes(x=polya_length_int,
+             y=cnt,
+             fill=plasmid)) +
+  geom_bar(stat='identity', position='dodge') +
+  facet_grid(plasmid~name, scales='free') +
+  scale_fill_manual(values = c('darkgreen', 'navyblue', 'orange')) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle=45, hjust=1),
+        panel.grid=element_blank())
+
+p_Fig2E
+```
+
+
+## biphasic model
+--> create and add bimodal model
+
+ ups: this is all based on post from Stackoverflow (https://stackoverflow.com/questions/48529367/fitting-a-mixture-of-gamma-and-normal-distribution-to-data-in-r)
+
+and simply uses a mixture of normal and log-normal distribution with r package 'fitdistrplus'
+
+```{r}
+library('fitdistrplus')
+```
+
+#### Distribution
+
+Define quantile, probability and distribution as simply additive of normal and lognormal with w_ln is the weight for the lognormal
+these are all 3 needed for fitdist 
+
+```{r}
+qlnorm_norm <- function(p, 
+                        w_ln=0.5,
+                        lnorm_mean=2,
+                        lnorm_sd=1,
+                       norm_mean=0,
+                       norm_sd=1) {
+  w_normal=1-w_ln
+  qlnormal=qlnorm(p,meanlog =lnorm_mean,sdlog = lnorm_sd)
+  qnormal=qnorm(p,mean =norm_mean,sd = norm_sd)
+  return(w_ln*qlnormal+w_normal*qnormal)
+}
+
+plnorm_norm <- function(q, 
+                        w_ln=0.5,
+                        lnorm_mean=2,
+                        lnorm_sd=1,
+                        norm_mean=0,
+                        norm_sd=1) {
+  w_normal=1-w_ln
+  plnormal=plnorm(q,meanlog =lnorm_mean,sdlog = lnorm_sd)
+  pnormal=pnorm(q,mean =norm_mean,sd = norm_sd)
+  return(w_ln*plnormal+w_normal*pnormal)
+}
+
+
+dlnorm_norm <- function(x,
+                       w_ln=0.5,
+                       lnorm_mean=2,
+                       lnorm_sd=1,
+                       norm_mean=0,
+                       norm_sd=1) {
+  
+  w_normal=1-w_ln
+  dlnormal=dlnorm(x,meanlog =lnorm_mean,sdlog = lnorm_sd)
+  dnormal=dnorm(x, mean=norm_mean, sd=norm_sd)
+  return(w_ln*dlnormal+w_normal*dnormal)
+}
+```
+
+#### basic log-normal parameters in non-export blocked controls
+
+
+```{r histogram of controls in Fig1C}
+p <- Fig1C_df %>%
+  dplyr::filter(rapa == 'no', plasmid == 'empty') %>%
+  ggplot(.,
+         aes(x=polya_length)) +
+  geom_histogram(binwidth=1) + 
+  coord_cartesian(xlim=c(0,200)) +
+  facet_wrap(~name+rapa+plasmid, scales='free')
+
+p
+```
+
+```{r}
+Fig1C_ctrls_split <- Fig1C_df %>%
+  dplyr::filter(rapa == 'no', plasmid == 'empty') %>%
+  split(.$name)
+
+
+lnormfit <- lapply(Fig1C_ctrls_split, function(df)
+                 fitdist(df$polya_length[df$polya_length>0], "lnorm", 
+                         start=list(meanlog = log(20), sdlog = log(10))))
+ 
+
+(lnormfit_df <- lapply(names(lnormfit), 
+                      function(name) data.frame(value = lnormfit[[name]]$estimate,
+                                                'name' = name) %>%
+                        rownames_to_column(var='parameter')) %>%
+  bind_rows() %>%
+  spread(parameter, value) %>%
+    mutate(mean=exp(meanlog), sd=exp(sdlog)))
+```
+
+--> lognorm meanlog of 3-3.5 (20-32) and sdlog of 0.5 to 0.71 (1.6-2.1)
+
+```{r}
+lnorm_fit_df <- apply(lnormfit_df, 1, function(fit)
+  data.frame(x=seq(0,250,.01),
+             name = fit[['name']],
+             meanlog = as.numeric(fit['meanlog']), sdlog = as.numeric(fit['sdlog']))%>%
+    mutate(lnorm_fit = dlnorm(x, meanlog, sdlog))) %>%
+  bind_rows
+```
+
+need to scale probabilites to fit count-based y-axis
+
+```{r}
+Fig1C_ctrls_cnts <- lapply(Fig1C_ctrls_split, nrow) %>%
+  bind_rows() %>%
+  gather(name, total_cnt)
+```
+
+```{r}
+lnorm_fit_df %<>%
+  left_join(., Fig1C_ctrls_cnts)
+```
+
+
+```{r lognorm fit histogram of controls in Fig1C}
+p +
+  geom_line(data=lnorm_fit_df, aes(x=x, y=total_cnt*lnorm_fit))
+```
+
+pretty decent fit, although not perfect
+
+
+#### apply mixed model to Fig2E
+```{r}
+Fig2E_split <- Fig2E_df %>% split(.$plasmid)
+names(Fig2E_split)
+```
+
+
+```{r}
+lnnfit <- lapply(Fig2E_split, function(df)
+                 fitdist(df$polya_length, 
+                         "lnorm_norm",
+                         start=list(w_ln=0.5, lnorm_mean=log(20),lnorm_sd=log(10), norm_mean=50, norm_sd=40),
+                lower=c(0,log(10),log(1),25,10), 
+                upper=c(1,log(40),log(20),200,100)))
+
+lnnfit
+```
+
+to data frame
+```{r}
+(lnnfit_df <- lapply(seq_along(lnnfit), function(i) lnnfit[[i]]$estimate %>%
+                       data.frame %>%
+         rownames_to_column(var='parameter') %>%
+          dplyr::rename_('estimate'='.') %>%
+         mutate(plasmid=names(lnnfit)[i])) %>%
+  bind_rows %>%
+  spread(parameter, estimate))
+```
+
+
+```{r}
+lnnfit_df <- Fig2E_df %>%
+  group_by(plasmid) %>%
+  summarise(total_cnt = n()) %>%
+  left_join(., lnnfit_df) %>%
+  mutate(plasmid=factor(plasmid, levels=c('pNAB2', 'pPAB1', 'empty')))
+
+fl <- data.frame(x=rep(seq(0,250,.01),3), plasmid=rep(c('empty', 'pNAB2', 'pPAB1'), each=25001)) %>%
+  left_join(., lnnfit_df) %>%
+  mutate(plasmid=factor(plasmid, levels=c('pNAB2', 'pPAB1', 'empty')),
+         fit_lnorm = total_cnt*w_ln * dlnorm(x, meanlog = lnorm_mean, sdlog = lnorm_sd),
+         fit_norm = total_cnt* (1-w_ln) * dnorm(x, mean = norm_mean, sd = norm_sd),
+         fit_mixed = fit_lnorm+fit_norm)
+```
+
+
+```{r Fig 2E}
+p_Fig2E +
+  geom_line(data=fl, aes(x=x, y=fit_lnorm), linetype=1, color='lightgray') +
+  geom_line(data=fl, aes(x=x, y=fit_norm), linetype=1, size=1) +
+  geom_line(data=fl, aes(x=x, y=fit_mixed), linetype=2, color='gray') +
+  geom_vline(data=fl, aes(xintercept=norm_mean), linetype=2, size=1) +
+  geom_text(data=lnnfit_df, aes(x=245, y=55, label=paste0('peak: ',round(norm_mean,0)), vjust=0, hjust=1)) +
+  geom_text(data=lnnfit_df, aes(x=245, y=20, label=paste0('n= ',total_cnt), vjust=0, hjust=1))
+```
+
+
+# Fig 2F
+
+mixed model for all 48 hsRNAs
+
+
+```{r}
+Fig2F_df <- pA_df2 %>%
+  dplyr::filter(name %in% hsRNAs,
+                temp == 'y38',
+                rapa == 'xRapa') %>%
+  unite(set, c(name, temp, rapa, plasmid, pab1DRRM4),sep = ':')
+```
+
+```{r}
+Fig2F_split <- split(Fig2F_df, Fig2F_df$set)
+```
+
+
+fit this with above settings, except a cutoff to only predict for a specific genes for a condition if there are more than 100 reads to base the fit on.
+```{r}
+lnnfit <- lapply(Fig2F_split, function(df)
+  if(nrow(df) > 100){
+        fitdist(df$polya_length, 
+                         "lnorm_norm",
+                         start=list(w_ln=0.5, 
+                                    lnorm_mean=log(20),
+                                    lnorm_sd=log(10), 
+                                    norm_mean=50, 
+                                    norm_sd=40),
+                lower=c(0,log(10),log(1),25,10), 
+                upper=c(1,log(40),log(20),200,100))
+      }else{
+        NA
+      })
+```
+
+to data frame
+```{r}
+(lnnfit_df <- lapply(seq_along(lnnfit), function(i) 
+  if(!is.na(lnnfit[[i]])){
+    lnnfit[[i]]$estimate %>%
+      data.frame %>%
+      rownames_to_column(var='parameter') %>%
+      dplyr::rename_('estimate'='.') %>%
+      mutate(set=names(lnnfit)[i])
+    }) %>%
+  bind_rows %>%
+  spread(parameter, estimate))
+```
+
+```{r Fig 2F}
+p_Fig2F <- lnnfit_df %>%
+  tidyr::separate(set, c('name', 'temp', 'rapa', 'plasmid', 'pab1DRRM4'), sep=':') %>%
+  dplyr::filter(!is.na(w_ln), w_ln < .95, temp == 'y38', rapa == 'xRapa') %>%
+  ggplot(., 
+         aes(x=plasmid, y=norm_mean)) +
+  geom_boxplot(outlier.shape=NA, color='black', fill=NA) +
+  geom_point(aes(color=plasmid), alpha=.5, size=3) +
+  geom_line(aes(group=name), alpha=.25) +
+  scale_fill_manual(values=c('orange', 'darkgreen', 'navyblue')) +
+  scale_color_manual(values=c('orange', 'darkgreen', 'navyblue')) +
+  coord_cartesian(ylim=c(40,200)) +
+  facet_grid(.~pab1DRRM4+temp+rapa) +
+  ylab('center of peak 2') +
+  theme_bw() +
+  theme(panel.grid=element_blank(),
+        axis.text.x=element_text(angle=45, hjust=1))
+
+p_Fig2F
+```
+
+
+
+# Fig S2B
+
+#### get polyA length data for individual genes 
+
+```{r}
+FigS2B_RNAs <- c('YLL026W_HSP104', 'YER103W_SSA4', 'YCR021C_HSP30', 'YDR258C_HSP78', 'YGR142W_BTN2', 'YPL250C_ICY2')
+
+
+FigS2B_df <- pA_df2 %>%
+  dplyr::filter(name %in% FigS2B_RNAs,
+                temp == 'y38',
+                plasmid == 'empty') %>%
+  mutate(name = sub('.*_', '', name),
+         name = factor(name, levels=c(sub('.*_', '', FigS2B_RNAs))))
+```
+
+
+
+#### create violin plot ups: minor style adjustments in vector graphics software
+
+```{r precursor to Fig S2B}
+p <- FigS2B_df %>%
+  ggplot(.,
+         aes(x=pab1DRRM4,
+             y=polya_length,
+             fill=pab1DRRM4)) +
+  geom_hline(yintercept=70, linetype=2, color='red') +
+  geom_violin(scale = 'width') +
+  coord_cartesian(ylim=c(-15,260)) +
+  scale_y_continuous(breaks=seq(0,250,50)) +
+  scale_fill_manual(values = c('lightgray', 'orange')) +
+  geom_boxplot(fill='lightgray', width=.2, outlier.shape=NA) +
+  facet_grid(.~name+rapa) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle=45, hjust=1),
+        panel.grid.minor.y=element_blank(),
+        panel.grid.major.x=element_blank(),panel.border = element_blank())
+
+p
+```
+
+#### final figure
+```{r Fig S2B}
+FigS2B_cnts <- FigS2B_df %>%
+  group_by(name, temp, rapa, plasmid, pab1DRRM4) %>%
+  summarize(cnt = n())
+
+p +
+  geom_text(
+    data = FigS2B_cnts,
+    aes(
+      x = pab1DRRM4,
+      y = 0,
+      label = paste0('n=', cnt)
+    ),
+    angle = 45,
+    hjust = 1,
+    vjust = 'top',
+    size=2,
+    nudge_x=.2,
+    nudge_y=-2
+  )
+```
+
+
+
+# Fig S2C
+
+```{r}
+bin_names <- c('>=100', '70-99', '50-69', '30-49', '10-29', '<10')
+```
+
+
+```{r}
+FigS2C <- pA_df2 %>%
+  dplyr::filter(name %in% hsRNAs,
+                temp == 'y38')
+  
+FigS2C_binned <- FigS2C %>%
+      mutate(
+        polya_length_bin = case_when(
+          polya_length >= 100 ~ '>=100',
+          polya_length >= 70 ~ '70-99',
+          polya_length >= 50 ~ '50-69',
+          polya_length >= 30 ~ '30-49',
+          polya_length >= 10 ~ '10-29',
+          polya_length >= 0 ~ '<10'
+        )
+      ) %>%
+      group_by(pab1DRRM4, temp, rapa, plasmid, polya_length_bin) %>%
+      summarize(reads_in_bin = n()) 
+
+FigS2C_totals <- FigS2C_binned %>%
+  group_by(pab1DRRM4, temp, rapa, plasmid) %>%
+  summarize(total_reads = sum(reads_in_bin)) 
+
+
+FigS2C_binned %<>%
+      left_join(., FigS2C_totals) %>%
+      mutate(freq_in_bin = reads_in_bin /total_reads,
+        polya_length_bin = factor(polya_length_bin,
+                                  levels = bin_names)
+      )
+
+FigS2C_binned
+```
+
+
+```{r precursor Fig S2C}
+grays <- colorRampPalette(c("lightgray", "darkgray"))
+
+oranges <- colorRampPalette(c("lightgray", "orange"))(6)[c(6,3)]
+
+p <- FigS2C_binned %>%
+      ggplot(.) +
+      geom_bar(aes(x = plasmid, y = freq_in_bin, fill = polya_length_bin),
+               stat = 'identity') +
+      facet_grid(. ~ pab1DRRM4 + temp + rapa + plasmid, scales = 'free') +
+    scale_fill_manual(values = c(oranges,grays(4)[4:1])) +
+    scale_y_continuous(breaks = c(0, .5, 1)) +
+    coord_cartesian(ylim = c(-0.2, 1)) +
+    theme_bw() +
+    theme(
+      panel.grid = element_blank(),
+      axis.ticks.x = element_blank(),
+      panel.spacing.x = unit(0, 'mm'),
+      strip.text.x = element_text(
+        angle = 90,
+        hjust = 0,
+        size = 8
+      ),
+      strip.background = element_blank(),
+      panel.border = element_rect(size = .1),
+      axis.text.x = element_text(angle = 45, hjust = 1)
+    )
+
+p
+```
+
+```{r Fig S2C}
+FigS2C_cnts <- FigS2C_binned %>%
+  group_by(pab1DRRM4, temp , rapa,  plasmid) %>%
+  summarize(cnt = sum(reads_in_bin))
+
+p +
+  geom_text(
+    data = FigS2C_cnts,
+    aes(
+      x = plasmid,
+      y = -.2,
+      label = paste0('n=', cnt)
+    ),
+    color = 'black',
+    angle = 90,
+    hjust = 'left',
+    vjust = 'bottom',
+    size = 3,
+    nudge_x = .1
+  ) +
+  theme(axis.text.x = element_blank(), axis.title.x = element_blank())
+```
+
+
+
+# Fig S2F
+
+```{r}
+FigS2F_df <- pA_df2 %>%
+  dplyr::filter(grepl('HSP104', name) | grepl('SSA4', name),
+                temp == 'y38',
+                pab1DRRM4 == 'dRRM4',
+                rapa == 'xRapa') %>%
+  mutate(name = sub('.*_', '', name)) %>%
+  unite(set, c(name, temp, rapa, plasmid, pab1DRRM4),sep = ':', remove = F)
+```
+
+```{r precursor for Fig2E}
+p_FigS2F <- FigS2F_df %>%
+  mutate(plasmid=factor(plasmid, levels=c('empty', 'pNAB2', 'pPAB1')),
+         name=factor(name, levels=c('HSP104', 'SSA4')),
+         polya_length_int = as.integer(polya_length),
+         polya_length_int = ifelse(polya_length_int>250,250,polya_length_int)) %>%
+  group_by(name, temp, rapa, plasmid, pab1DRRM4, polya_length_int) %>%
+  summarize(cnt=n()) %>%
+  ggplot(.,
+         aes(x=polya_length_int,
+             y=cnt)) +
+  geom_bar(stat='identity', position='dodge') +
+  facet_grid(name~plasmid, scales='free') +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle=45, hjust=1),
+        panel.grid=element_blank())
+
+p_FigS2F
+```
+
+
+## fit the biphasic model
+```{r}
+FigS2F_split <- FigS2F_df %>%
+  split(.$set)
+```
+
+```{r}
+lnnfit <- lapply(FigS2F_split, function(df)
+                 fitdist(df$polya_length, 
+                         "lnorm_norm",
+                         start=list(w_ln=0.5, lnorm_mean=log(20),lnorm_sd=log(10), norm_mean=50, norm_sd=40),
+                lower=c(0,log(10),log(1),25,10), 
+                upper=c(1,log(40),log(20),200,100)))
+
+lnnfit
+```
+
+
+to data frame
+```{r}
+(lnnfit_df <- lapply(seq_along(lnnfit), function(i) lnnfit[[i]]$estimate %>%
+                       data.frame %>%
+         rownames_to_column(var='parameter') %>%
+          dplyr::rename_('estimate'='.') %>%
+         mutate(set=names(lnnfit)[i])) %>%
+  bind_rows %>%
+  spread(parameter, estimate))
+```
+
+
+```{r}
+lnnfit_df <- FigS2F_df %>%
+  group_by(set) %>%
+  summarise(total_cnt = n()) %>%
+  left_join(., lnnfit_df) %>%
+  tidyr::separate(set, c('name', 'temp', 'rapa', 'plasmid', 'pab1DRRM4'), sep=':')
+
+fl <- data.frame(x=rep(seq(0,250,.01),3), set=rep(names(lnnfit), each=25001)) %>%
+  tidyr::separate(set, c('name', 'temp', 'rapa', 'plasmid', 'pab1DRRM4'), sep=':') %>%
+  left_join(., lnnfit_df) %>%
+  mutate(plasmid=factor(plasmid, levels=c('pNAB2', 'pPAB1', 'empty')),
+         fit_lnorm = total_cnt*w_ln * dlnorm(x, meanlog = lnorm_mean, sdlog = lnorm_sd),
+         fit_norm = total_cnt* (1-w_ln) * dnorm(x, mean = norm_mean, sd = norm_sd),
+         fit_mixed = fit_lnorm+fit_norm)
+```
+
+
+```{r FigS2F}
+p_FigS2F +
+  geom_line(data=fl, aes(x=x, y=fit_lnorm), linetype=1, size=1, color='gray') +
+  geom_line(data=fl, aes(x=x, y=fit_norm), linetype=1, size=1, color='orange') +
+  geom_line(data=fl, aes(x=x, y=fit_mixed), linetype=2, color='black') +
+  geom_vline(data=fl, aes(xintercept=norm_mean), linetype=2, size=1) +
+  geom_text(data=lnnfit_df, aes(x=245, y=10, label=paste0('center: ',round(norm_mean,1)), vjust=0, hjust=1)) +
+  geom_text(data=lnnfit_df, aes(x=245, y=5, label=paste0('weight: ',round(w_ln,2)), vjust=0, hjust=1))
+```
+
+
+
+# Session Info
+```{r}
+sessionInfo()
+```
