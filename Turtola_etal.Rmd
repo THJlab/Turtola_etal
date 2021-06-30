@@ -33,7 +33,7 @@ Plots shown in Turtoal et al. with minor style adjustments using vector graphics
 
 # Load the data
 
-```{r, cache=T}
+```{r}
 (pA_df <- readRDS("data/Pawel_Series2_all_pA.rds"))
 
 distinct(pA_df, temp, rapa, plasmid, pab1DRRM4)
@@ -1682,7 +1682,7 @@ p_FigS2F +
   geom_line(data=fl, aes(x=x, y=fit_mixed), linetype=2, color='black') +
   geom_vline(data=fl, aes(xintercept=norm_mean), linetype=2, size=1) +
   geom_text(data=lnnfit_df, aes(x=245, y=10, label=paste0('center: ',round(norm_mean,1)), vjust=0, hjust=1)) +
-  geom_text(data=lnnfit_df, aes(x=245, y=5, label=paste0('weight: ',round(w_ln,2)), vjust=0, hjust=1))
+  geom_text(data=lnnfit_df, aes(x=245, y=5, label=paste0('weight: ',round(1-w_ln,2)), vjust=0, hjust=1))
 ```
 
 
