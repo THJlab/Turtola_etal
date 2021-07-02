@@ -8,3 +8,5 @@ Note that the large pA.rds and 4tU_pA.rds data files are uploaded to GitHub via 
 These files contain nanopore DRS reads aligning to the yeast reference genome with poly(A) tail lengths estimated by the Nanopolish 0.13.2 polya function, with QC tag that was reported by Nanopolish as PASS.
 
 Raw nanopore sequencing data (fast5 files) are deposited at European Nucleotide Archive.
+
+Annotations (SacCer3_custom_annotation_ORFs_ncRNA_CUTs_SUTs_XUTs.bed) and sequences (SacCer3_custom_annotation_ORFs_ncRNA_CUTs_SUTs_XUTs.fasta) used for mapping are in subfolder data
